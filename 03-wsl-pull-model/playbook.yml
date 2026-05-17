@@ -1,0 +1,137 @@
+---
+- name: Set up Python development environment with auto-updates
+  hosts: devservers
+  become: yes
+  vars:
+    dev_user: youruser
+    python_packages:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+      - build-essential
+      - git
+      - curl
+
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all installed packages
+      apt:
+        upgrade: dist
+
+    - name: Install Python and development tools
+      apt:
+        name: "{{ python_packages }}"
+        state: present
+
+    - name: Install unattended-upgrades for automatic security patches
+      apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+
+    - name: Configure unattended-upgrades to enable automatic updates
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure which updates unattended-upgrades will install
+      copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        content: |
+          Unattended-Upgrade::Origins-Pattern {
+              "origin=Debian,codename=${distro_codename},label=Debian";
+              "origin=Debian,codename=${distro_codename},label=Debian-Security";
+              "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+          };
+          Unattended-Upgrade::Automatic-Reboot "false";
+          Unattended-Upgrade::Remove-Unused-Dependencies "true";
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create a Python virtual environment for the dev user
+      become_user: "{{ dev_user }}"
+      command: python3 -m venv /home/{{ dev_user }}/venvs/dev
+      args:
+        creates: /home/{{ dev_user }}/venvs/dev/bin/activate
+
+    - name: Upgrade pip inside the virtual environment
+      become_user: "{{ dev_user }}"
+      pip:
+        name:
+          - pip
+          - setuptools
+          - wheel
+        state: latest
+        virtualenv: /home/{{ dev_user }}/venvs/dev
+
+    - name: Install common Python development packages in the venv
+      become_user: "{{ dev_user }}"
+      pip:
+        name:
+          - ipython
+          - requests
+          - black
+          - flake8
+          - pytest
+        state: present
+        virtualenv: /home/{{ dev_user }}/venvs/dev
+
+    - name: Install Ansible on the server for self-management
+      apt:
+        name: ansible
+        state: present
+
+    - name: Create directory for self-managed playbooks
+      file:
+        path: /opt/ansible-self
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy the playbook to the server
+      copy:
+        src: playbook.yml
+        dest: /opt/ansible-self/playbook.yml
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create a local inventory on the server
+      copy:
+        dest: /opt/ansible-self/inventory.ini
+        content: |
+          [devservers]
+          localhost ansible_connection=local
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create a log directory for self-runs
+      file:
+        path: /var/log/ansible-self
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Schedule the playbook to run daily via cron
+      cron:
+        name: "Self-run Ansible playbook for updates"
+        minute: "0"
+        hour: "3"
+        user: root
+        job: "/usr/bin/ansible-playbook -i /opt/ansible-self/inventory.ini /opt/ansible-self/playbook.yml >> /var/log/ansible-self/run.log 2>&1"
