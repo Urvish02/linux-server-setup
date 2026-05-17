@@ -1,0 +1,90 @@
+---
+- name: Set up Python development workstation
+  hosts: workstation
+  become: yes
+
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all installed packages
+      apt:
+        upgrade: dist
+
+    - name: Install Python and development tools
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - python3-dev
+          - build-essential
+          - git
+          - curl
+        state: present
+
+    - name: Upgrade pip to latest
+      pip:
+        name: pip
+        state: latest
+        executable: pip3
+
+    - name: Install common Python dev packages
+      pip:
+        name:
+          - black
+          - flake8
+          - pytest
+          - ipython
+          - requests
+        state: present
+        executable: pip3
+
+    - name: Install unattended-upgrades
+      apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Enable automatic security updates
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+
+    - name: Create systemd service for dev-env updates
+      copy:
+        dest: /etc/systemd/system/dev-env-update.service
+        content: |
+          [Unit]
+          Description=Update Python dev environment packages
+          After=network.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/pip3 install --upgrade black flake8 pytest ipython requests
+          ExecStartPost=/usr/bin/apt-get upgrade -y python3 python3-pip
+
+    - name: Create systemd timer for weekly updates
+      copy:
+        dest: /etc/systemd/system/dev-env-update.timer
+        content: |
+          [Unit]
+          Description=Run Python dev environment update weekly
+
+          [Timer]
+          OnCalendar=weekly
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable and start the update timer
+      systemd:
+        name: dev-env-update.timer
+        enabled: yes
+        state: started
+        daemon_reload: yes
