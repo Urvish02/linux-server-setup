@@ -1,0 +1,29 @@
+---
+- name: Setup Python Development Environment
+  hosts: dev_servers
+  become: yes
+  vars_files:
+    - vars/python.yml
+  pre_tasks:
+    - name: Verify SSH connection
+      ping:
+  roles:
+    - python-dev
+  post_tasks:
+    - name: Verify Python installation
+      command: python3 --version
+      register: python_version_output
+      changed_when: false
+
+    - name: Show Python version
+      debug:
+        msg: "Installed: {{ python_version_output.stdout }}"
+
+    - name: Verify pip installation
+      command: pip3 --version
+      register: pip_version_output
+      changed_when: false
+
+    - name: Show pip version
+      debug:
+        msg: "Installed: {{ pip_version_output.stdout }}"
