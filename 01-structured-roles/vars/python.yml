@@ -1,0 +1,19 @@
+# Python version to install
+python_version: "3.11"
+
+# Global pip packages to install and keep updated
+pip_packages:
+  - pip
+  - setuptools
+  - wheel
+  - virtualenv
+  - pipenv
+  - black
+  - flake8
+  - mypy
+  - pytest
+  - ipython
+
+# Auto-update schedule (cron)
+auto_update_hour: "3"
+auto_update_minute: "0"
